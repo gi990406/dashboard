@@ -7,9 +7,9 @@
   "cctvConfig": {
     "type": "its",
     "cctvType": "1",
-    "minX": 125.89,
-    "maxX": 127.89,
-    "minY": 35.23,
-    "maxY": 36.23
+    "minX": 126.8,
+    "maxX": 127.9,
+    "minY": 35.2,
+    "maxY": 36.3
   }
 }
