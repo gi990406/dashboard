@@ -15,8 +15,14 @@ try:
     data = response.json()
     
     if data.get("ok") and data.get("data", {}).get("response", {}).get("data"):
-        # 첫 번째 CCTV URL 가져오기
-        cctv_url = data["data"]["response"]["data"][0]["cctvurl"]
+        cctv_data = data["data"]["response"]["data"]
+        # 결과가 1개일 때는 배열(list)이 아니라 딕셔너리(dict)로 반환될 수 있음
+        if isinstance(cctv_data, list) and len(cctv_data) > 0:
+            cctv_url = cctv_data[0]["cctvurl"]
+        elif isinstance(cctv_data, dict):
+            cctv_url = cctv_data.get("cctvurl")
+        else:
+            raise ValueError("CCTV 데이터 형식이 올바르지 않습니다.")
     else:
         print("API 응답에서 CCTV URL을 찾을 수 없습니다. (config.json의 API 키를 확인해주세요)")
         exit(1)

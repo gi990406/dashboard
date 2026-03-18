@@ -23,25 +23,50 @@ def get_cctv_url():
         response = requests.get(api_url, timeout=5)
         data = response.json()
         if data.get("ok") and data.get("data", {}).get("response", {}).get("data"):
-            return data["data"]["response"]["data"][0]["cctvurl"]
+            cctv_data = data["data"]["response"]["data"]
+            if isinstance(cctv_data, list) and len(cctv_data) > 0:
+                return cctv_data[0]["cctvurl"]
+            elif isinstance(cctv_data, dict):
+                return cctv_data.get("cctvurl")
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"API 호출 실패: {e}")
     return None
 
 class ThreadedCamera:
     def __init__(self, src):
-        self.cap = cv2.VideoCapture(src)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        self.ret, self.frame = self.cap.read()
+        self.src = src
+        self.cap = None
+        self.ret = False
+        self.frame = None
         self.running = True
+        self.connecting = True
         self.thread = threading.Thread(target=self.update, args=())
         self.thread.daemon = True
         self.thread.start()
 
     def update(self):
+        self.cap = cv2.VideoCapture(self.src)
+        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        
+        # 첫 번째 프레임을 완전히 읽어올 때까지 connecting 상태 유지
+        while self.running and self.connecting:
+            if self.cap.isOpened():
+                ret, frame = self.cap.read()
+                if ret and frame is not None:
+                    self.ret = ret
+                    self.frame = frame
+                    self.connecting = False
+                    break
+            time.sleep(0.1)
+            
         while self.running:
             if self.cap.isOpened():
                 self.ret, self.frame = self.cap.read()
+            else:
+                self.ret = False
+                self.frame = None
             time.sleep(0.01)
 
     def read(self):
@@ -50,7 +75,8 @@ class ThreadedCamera:
     def release(self):
         self.running = False
         self.thread.join(timeout=1.0)
-        self.cap.release()
+        if self.cap is not None:
+            self.cap.release()
 
 def draw_perspective_grid(img, width, height):
     color = (40, 40, 40)
@@ -80,10 +106,13 @@ def processing_thread():
             cap = ThreadedCamera(cctv_url)
             
         ret, frame = cap.read()
-        
         lidar_view = np.zeros((480, 640, 3), dtype=np.uint8)
         
-        if not ret or frame is None: 
+        if cap.connecting:
+            cv2.putText(lidar_view, "INITIALIZING STREAM (WAIT 10-30s)...", (80, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cctv_view = lidar_view.copy()
+            time.sleep(0.5)
+        elif not ret or frame is None: 
             cap.release()
             cap = None
             cv2.putText(lidar_view, "RECONNECTING CCTV...", (150, 240), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
