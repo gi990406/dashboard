@@ -533,11 +533,11 @@ export default function DashboardPage({
                 src={`http://${window.location.hostname}:5001/cctv_feed`}
                 alt="CCTV Feed"
                 className="w-full h-full object-cover"
-                onError={(e) => { 
+                onError={(e) => {
                   setTimeout(() => {
                     const baseUrl = e.target.src.split('?')[0];
                     e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
-                  }, 3000); 
+                  }, 3000);
                 }}
               />
 
@@ -551,24 +551,24 @@ export default function DashboardPage({
             <div className="col-span-2 bg-black rounded border border-gray-700 relative overflow-hidden flex">
 
               <div className="absolute top-3 left-3 px-2 py-0.5 bg-blue-900/80 border border-blue-500/50 text-blue-200 text-[10px] font-bold rounded font-mono z-10">
-                라이다 센서 (AI Track)
+                라이다 센서
               </div>
 
               <img
                 src={`http://${window.location.hostname}:5001/lidar_feed`}
                 alt="LiDAR Feed"
                 className="w-full h-full object-contain"
-                onError={(e) => { 
-                  e.target.style.display = 'none'; 
-                  if(videoRef.current) videoRef.current.style.display = 'block'; 
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                  if (videoRef.current) videoRef.current.style.display = 'block';
                   setTimeout(() => {
                     const baseUrl = e.target.src.split('?')[0];
                     e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
-                  }, 3000); 
+                  }, 3000);
                 }}
-                onLoad={(e) => { 
-                  e.target.style.display = 'block'; 
-                  if(videoRef.current) videoRef.current.style.display = 'none'; 
+                onLoad={(e) => {
+                  e.target.style.display = 'block';
+                  if (videoRef.current) videoRef.current.style.display = 'none';
                 }}
               />
 
@@ -582,10 +582,6 @@ export default function DashboardPage({
                 preload="auto"
                 onTimeUpdate={handleDemoTimeUpdate}
               />
-
-              <div className="absolute bottom-2 right-2 text-[10px] font-mono text-green-500">
-                포인트: 2,405 | 주기: 10Hz
-              </div>
 
             </div>
 
