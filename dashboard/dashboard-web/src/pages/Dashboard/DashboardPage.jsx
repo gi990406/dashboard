@@ -529,24 +529,17 @@ export default function DashboardPage({
                 실시간 카메라
               </div>
 
-              {cctvData?.cctvurl ? (
-                <video
-                  ref={cctvVideoRef}
-                  className="w-full h-full object-cover"
-                  muted
-                  playsInline
-                  autoPlay
-                />
-              ) : (
-                <div className="flex flex-col items-center text-gray-500 space-y-2">
-                  <div className="w-14 h-10 border-2 border-gray-400 rounded-lg flex items-center justify-center">
-                    <div className="w-5 h-5 rounded-full border-2 border-gray-400 relative">
-                      <div className="absolute top-[-2px] right-[-2px] w-2 h-2 bg-gray-400 rounded-full" />
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono">LOADING...</span>
-                </div>
-              )}
+              <img
+                src={`http://${window.location.hostname}:5001/cctv_feed`}
+                alt="CCTV Feed"
+                className="w-full h-full object-cover"
+                onError={(e) => { 
+                  setTimeout(() => {
+                    const baseUrl = e.target.src.split('?')[0];
+                    e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
+                  }, 3000); 
+                }}
+              />
 
               <div className="absolute bottom-2 left-2 text-[10px] text-gray-600 font-mono">
                 CAM_01_ENTRANCE
@@ -558,13 +551,32 @@ export default function DashboardPage({
             <div className="col-span-2 bg-black rounded border border-gray-700 relative overflow-hidden flex">
 
               <div className="absolute top-3 left-3 px-2 py-0.5 bg-blue-900/80 border border-blue-500/50 text-blue-200 text-[10px] font-bold rounded font-mono z-10">
-                라이다 센서
+                라이다 센서 (AI Track)
               </div>
+
+              <img
+                src={`http://${window.location.hostname}:5001/lidar_feed`}
+                alt="LiDAR Feed"
+                className="w-full h-full object-contain"
+                onError={(e) => { 
+                  e.target.style.display = 'none'; 
+                  if(videoRef.current) videoRef.current.style.display = 'block'; 
+                  setTimeout(() => {
+                    const baseUrl = e.target.src.split('?')[0];
+                    e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
+                  }, 3000); 
+                }}
+                onLoad={(e) => { 
+                  e.target.style.display = 'block'; 
+                  if(videoRef.current) videoRef.current.style.display = 'none'; 
+                }}
+              />
 
               <video
                 ref={videoRef}
                 src="/demo.mp4"
                 className="w-full h-full object-cover -rotate-12 scale-[1.42] -translate-y-3"
+                style={{ display: 'none' }}
                 muted
                 playsInline
                 preload="auto"
