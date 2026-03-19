@@ -39,6 +39,7 @@ export default function DashboardPage({
   const [serverAlive, setServerAlive] = useState(false); // 서버 alive 표시 => /api/health
   const [cctvData, setCctvData] = useState(null); // CCTV 데이터
   const cctvVideoRef = useRef(null); // CCTV 비디오 레프
+  const [isDemoStarted, setIsDemoStarted] = useState(false); // 데모 시작 여부
 
   // kpi 페이지 이동 함수
   const navigate = useNavigate();
@@ -46,9 +47,15 @@ export default function DashboardPage({
 
   // websocket onmessage의 항상 최신값 유지
   const alertsEnabledRef = useRef(alertsEnabled);
+  const isDemoStartedRef = useRef(isDemoStarted);
+
   useEffect(() => {
     alertsEnabledRef.current = alertsEnabled;
   }, [alertsEnabled]);
+
+  useEffect(() => {
+    isDemoStartedRef.current = isDemoStarted;
+  }, [isDemoStarted]);
 
   // 팝업 버튼 핸들러
   const handleDismissAlert = () => {
@@ -103,6 +110,7 @@ export default function DashboardPage({
   const startDemo = async () => {
     try {
       pushLog("Demo START 요청");
+      setIsDemoStarted(true);
 
       // demo 영상 
       const v = videoRef.current;
@@ -170,21 +178,21 @@ export default function DashboardPage({
           setRecentLogs(msg.payload.slice(0, 10));
         }
 
-        // 팝업은 wrong-way만, 토글 on일 때만
-        if (msg.type === "alert") {
-          const alert = msg.payload;
+          // 팝업은 wrong-way만, 토글 on일 때만
+          if (msg.type === "alert") {
+            const alert = msg.payload;
 
-          //토글 off면 팝업 금지, 로그만
-          if (!alertsEnabledRef.current) {
-            if (alert?.subMessage) {
-              setRecentLogs((prev) => [{ msg: `(Muted) ${alert.subMessage}`, time: alert.timestamp || "" }, ...prev].slice(0, 10));
+            // 토글 off 거나 데모 시작 전이면 팝업 금지, 로그만
+            if (!alertsEnabledRef.current || !isDemoStartedRef.current) {
+              if (alert?.subMessage) {
+                setRecentLogs((prev) => [{ msg: `(Muted) ${alert.subMessage}`, time: alert.timestamp || "" }, ...prev].slice(0, 10));
+              }
+              return;
             }
-            return;
-          }
 
-          if (alert?.type === "wrong-way") {
-            setActiveAlert(alert); // 여기서 팝업 뜸
-          } else {
+            if (alert?.type === "wrong-way") {
+              setActiveAlert(alert); // 여기서 팝업 뜸
+            } else {
             // 다른 타입은 로그만
             if (alert?.subMessage) {
               setRecentLogs((prev) => [{ msg: alert.subMessage, time: alert.timestamp || "" }, ...prev].slice(0, 10));
@@ -529,17 +537,24 @@ export default function DashboardPage({
                 실시간 카메라
               </div>
 
-              <img
-                src={`http://${window.location.hostname}:5001/cctv_feed`}
-                alt="CCTV Feed"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  setTimeout(() => {
-                    const baseUrl = e.target.src.split('?')[0];
-                    e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
-                  }, 3000);
-                }}
-              />
+              {isDemoStarted ? (
+                <img
+                  src={`http://${window.location.hostname}:5001/cctv_feed`}
+                  alt="CCTV Feed"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    setTimeout(() => {
+                      const baseUrl = e.target.src.split('?')[0];
+                      e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
+                    }, 3000);
+                  }}
+                />
+              ) : (
+                <div className="text-gray-500 font-mono text-xs flex flex-col items-center">
+                  <Activity className="w-6 h-6 mb-2 opacity-50" />
+                  <span>대기 중...</span>
+                </div>
+              )}
 
               <div className="absolute bottom-2 left-2 text-[10px] text-gray-600 font-mono">
                 CAM_01_ENTRANCE
@@ -548,29 +563,31 @@ export default function DashboardPage({
 
 
             {/* 라이다 영역 (2칸) */}
-            <div className="col-span-2 bg-black rounded border border-gray-700 relative overflow-hidden flex">
+            <div className="col-span-2 bg-black rounded border border-gray-700 relative overflow-hidden flex items-center justify-center">
 
               <div className="absolute top-3 left-3 px-2 py-0.5 bg-blue-900/80 border border-blue-500/50 text-blue-200 text-[10px] font-bold rounded font-mono z-10">
                 라이다 센서
               </div>
 
-              <img
-                src={`http://${window.location.hostname}:5001/lidar_feed`}
-                alt="LiDAR Feed"
-                className="w-full h-full object-contain"
-                onError={(e) => {
-                  e.target.style.display = 'none';
-                  if (videoRef.current) videoRef.current.style.display = 'block';
-                  setTimeout(() => {
-                    const baseUrl = e.target.src.split('?')[0];
-                    e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
-                  }, 3000);
-                }}
-                onLoad={(e) => {
-                  e.target.style.display = 'block';
-                  if (videoRef.current) videoRef.current.style.display = 'none';
-                }}
-              />
+              {isDemoStarted && (
+                <img
+                  src={`http://${window.location.hostname}:5001/lidar_feed`}
+                  alt="LiDAR Feed"
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    if (videoRef.current) videoRef.current.style.display = 'block';
+                    setTimeout(() => {
+                      const baseUrl = e.target.src.split('?')[0];
+                      e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
+                    }, 3000);
+                  }}
+                  onLoad={(e) => {
+                    e.target.style.display = 'block';
+                    if (videoRef.current) videoRef.current.style.display = 'none';
+                  }}
+                />
+              )}
 
               <video
                 ref={videoRef}
@@ -583,6 +600,12 @@ export default function DashboardPage({
                 onTimeUpdate={handleDemoTimeUpdate}
               />
 
+              {!isDemoStarted && (
+                <div className="text-gray-500 font-mono text-xs flex flex-col items-center absolute inset-0 justify-center">
+                  <Activity className="w-6 h-6 mb-2 opacity-50" />
+                  <span>대기 중...</span>
+                </div>
+              )}
             </div>
 
           </div>

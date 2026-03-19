@@ -94,6 +94,7 @@ def draw_perspective_grid(img, width, height):
 def processing_thread():
     global latest_cctv_jpg, latest_lidar_jpg
     track_history = defaultdict(lambda: [])
+    notified_track_ids = set()
     cap = None
     bg_subtractor = cv2.createBackgroundSubtractorMOG2(history=500, varThreshold=25, detectShadows=False)
     
@@ -140,6 +141,13 @@ def processing_thread():
                 track_ids = results[0].boxes.id.int().cpu().tolist()
 
                 for box, track_id in zip(boxes, track_ids):
+                    if track_id not in notified_track_ids:
+                        notified_track_ids.add(track_id)
+                        try:
+                            threading.Thread(target=lambda tid=track_id: requests.post("http://localhost:5000/api/detect", json={"track_id": tid}, timeout=1), daemon=True).start()
+                        except:
+                            pass
+
                     x, y, w, h = box
                     center = (int(x), int(y))
                     

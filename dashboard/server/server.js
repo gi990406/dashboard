@@ -250,6 +250,34 @@ app.post("/api/wrongway", (req, res) => {
   res.json({ ok: true });
 });
 
+app.post("/api/detect", (req, res) => {
+  const body = req.body || {};
+  console.log("[detect hit]", new Date().toISOString(), body);
+
+  // 30% 확률로 역주행 경고 모달 발생
+  if (Math.random() < 0.3) {
+    const isCritical = Math.random() < 0.5; // 절반 확률로 위험 단계
+    const alert = {
+      id: `det-${Date.now()}`,
+      type: "wrong-way",
+      stage: isCritical ? 2 : 1,
+      message: "WRONG WAY DETECTION",
+      subMessage: `임의 역주행 시뮬레이션 감지 (차량 ID: ${body.track_id || "알 수 없음"})`,
+      timestamp: nowTime(),
+      track_id: body.track_id,
+      zone_id: "Z_RAND",
+      confidence: 0.85 + Math.random() * 0.1,
+    };
+
+    applyAlertEffects(alert);
+    broadcast("alert", alert);
+    broadcast("state", state);
+    pushLog(`[WRONGWAY] ${alert.subMessage}`);
+  }
+
+  res.json({ ok: true });
+});
+
 // ------------------------------ 
 // WebSocket (실시간 수신 구조 확인)
 // ------------------------------
