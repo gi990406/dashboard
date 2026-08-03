@@ -1,0 +1,30 @@
+name: Temporary Whisper Model Package
+
+on:
+  push:
+    paths:
+      - '.github/workflows/temp-whisper-model.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  package-model:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download multilingual Whisper model
+        run: |
+          set -euo pipefail
+          curl -L --fail --retry 3 \
+            -o ggml-base-q5_1.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q5_1.bin
+          test "$(stat -c%s ggml-base-q5_1.bin)" -gt 50000000
+          sha256sum ggml-base-q5_1.bin
+
+      - name: Upload model artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ggml-base-q5_1
+          path: ggml-base-q5_1.bin
+          retention-days: 1
+          compression-level: 0
