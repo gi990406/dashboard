@@ -5,7 +5,7 @@ const http = require("http");
 const { WebSocketServer } = require("ws");
 
 // demo
-const { spawn} = require("child_process");
+const { spawn } = require("child_process");
 const path = require("path");
 //
 const fs = require("fs");
@@ -176,6 +176,48 @@ app.post("/api/vms", (req, res) => {
   res.json({ ok: true, vmsLast: state.vmsLast });
 });
 
+// ------------------------------
+// ITS CCTV API Proxy
+// ------------------------------
+app.get("/api/cctv", async (req, res) => {
+  try {
+    const { itsApiKey, cctvConfig } = config;
+
+    if (!itsApiKey || itsApiKey === "YOUR_ITS_API_KEY_HERE" || itsApiKey.length < 10) {
+      return res.status(401).json({
+        ok: false,
+        error: "ITS API Key is missing or invalid in config.json"
+      });
+    }
+
+    const params = new URLSearchParams({
+      apiKey: itsApiKey,
+      type: req.query.type || cctvConfig.type,
+      cctvType: req.query.cctvType || cctvConfig.cctvType,
+      minX: req.query.minX || cctvConfig.minX,
+      maxX: req.query.maxX || cctvConfig.maxX,
+      minY: req.query.minY || cctvConfig.minY,
+      maxY: req.query.maxY || cctvConfig.maxY,
+      getType: "json"
+    });
+
+    const url = `https://openapi.its.go.kr:9443/cctvInfo?${params.toString()}`;
+    console.log(`[CCTV] Requesting: ${url}`);
+
+    const response = await fetch(url);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data?.message || `ITS API responded with status ${response.status}`);
+    }
+
+    res.json({ ok: true, data });
+  } catch (err) {
+    console.error("[CCTV Error]", err);
+    res.status(502).json({ ok: false, error: String(err.message || err) });
+  }
+});
+
 // 실장비/리플레이 라이다px-> 대시보드pc 이벤트 전송 수신
 app.post("/api/wrongway", (req, res) => {
   const body = req.body || {};
@@ -188,25 +230,53 @@ app.post("/api/wrongway", (req, res) => {
     stage: Number(body.stage) || 1,
     message: "WRONG WAY DETECTION",
     subMessage: body.message || `Zone: ${body.zone_id || "UNKNOWN"}`,
-    timestamp: body.timestamp ? new Date(body.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit"}) : nowTime(),
-      zone_id: body.zone_id,
-      track_id: body.track_id,
-      confidence: body.confidence,
-      video_ts_ms: body.video_ts_ms, 
-      device_id: body.device_id,
-      serial_no: body.serial_no,
-    };
-    
-    console.log("[broadcast alert", alert);
+    timestamp: body.timestamp ? new Date(body.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : nowTime(),
+    zone_id: body.zone_id,
+    track_id: body.track_id,
+    confidence: body.confidence,
+    video_ts_ms: body.video_ts_ms,
+    device_id: body.device_id,
+    serial_no: body.serial_no,
+  };
 
-    //kpi/로그반영
+  console.log("[broadcast alert", alert);
+
+  //kpi/로그반영
+  applyAlertEffects(alert);
+  broadcast("alert", alert);
+  broadcast("state", state);
+  pushLog(`[WRONGWAY] ${alert.subMessage}`);
+
+  res.json({ ok: true });
+});
+
+app.post("/api/detect", (req, res) => {
+  const body = req.body || {};
+  console.log("[detect hit]", new Date().toISOString(), body);
+
+  // 30% 확률로 역주행 경고 모달 발생
+  if (Math.random() < 0.3) {
+    const isCritical = Math.random() < 0.5; // 절반 확률로 위험 단계
+    const alert = {
+      id: `det-${Date.now()}`,
+      type: "wrong-way",
+      stage: isCritical ? 2 : 1,
+      message: "WRONG WAY DETECTION",
+      subMessage: `임의 역주행 시뮬레이션 감지 (차량 ID: ${body.track_id || "알 수 없음"})`,
+      timestamp: nowTime(),
+      track_id: body.track_id,
+      zone_id: "Z_RAND",
+      confidence: 0.85 + Math.random() * 0.1,
+    };
+
     applyAlertEffects(alert);
     broadcast("alert", alert);
     broadcast("state", state);
     pushLog(`[WRONGWAY] ${alert.subMessage}`);
+  }
 
-    res.json({ ok: true });
-  });
+  res.json({ ok: true });
+});
 
 // ------------------------------ 
 // WebSocket (실시간 수신 구조 확인)

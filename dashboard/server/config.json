@@ -2,5 +2,14 @@
   "serverPort": 5000,
   "dashboardIP": "192.168.0.3",
   "serialPort": "COM14",
-  "baudRate": 9600
+  "baudRate": 9600,
+  "itsApiKey": "3bb6300aff3140cbb4ac7b2f81c42328",
+  "cctvConfig": {
+    "type": "its",
+    "cctvType": "1",
+    "minX": 126.86,
+    "maxX": 126.89,
+    "minY": 35.24,
+    "maxY": 35.27
+  }
 }

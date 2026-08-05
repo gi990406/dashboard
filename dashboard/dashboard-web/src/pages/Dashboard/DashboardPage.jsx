@@ -26,6 +26,7 @@ export default function DashboardPage({
   onNavigateToTotalVehicles,
   onNavigateToUnidentified,
 }) {
+  const API_BASE = `http://${window.location.hostname}:5000`;
   const [activeAlert, setActiveAlert] = useState(null); // 긴급 팝업 데이터
   const [alertsEnabled, setAlertsEnabled] = useState(true); // 팝업 허용 토글(ON/OFF)
   const [vmsText, setVmsText] = useState(""); // 전광판 입력
@@ -34,23 +35,32 @@ export default function DashboardPage({
     { msg: "LIDAR_01 동기화 정상", time: "10:41" },
     { msg: "차단기 A 열림", time: "10:38" },
   ]);
-  
+
   const [serverAlive, setServerAlive] = useState(false); // 서버 alive 표시 => /api/health
-  
+  const [cctvData, setCctvData] = useState(null); // CCTV 데이터
+  const cctvVideoRef = useRef(null); // CCTV 비디오 레프
+  const [isDemoStarted, setIsDemoStarted] = useState(false); // 데모 시작 여부
+
   // kpi 페이지 이동 함수
   const navigate = useNavigate();
   const goEvents = (tab) => navigate(`/events?tab=${tab}`);
 
   // websocket onmessage의 항상 최신값 유지
-  const alertsEnabledRef = useRef(alertsEnabled); 
+  const alertsEnabledRef = useRef(alertsEnabled);
+  const isDemoStartedRef = useRef(isDemoStarted);
+
   useEffect(() => {
     alertsEnabledRef.current = alertsEnabled;
   }, [alertsEnabled]);
 
+  useEffect(() => {
+    isDemoStartedRef.current = isDemoStarted;
+  }, [isDemoStarted]);
+
   // 팝업 버튼 핸들러
   const handleDismissAlert = () => {
     setActiveAlert(null);
-  }; 
+  };
 
 
   const handleViewAlert = () => { // 즉시 조치화면 보기 -> 추후 구현
@@ -66,11 +76,11 @@ export default function DashboardPage({
 
   const pushLog = (msg) => {
     const t = new Date().toLocaleTimeString([], {
-      hour: "2-digit", 
+      hour: "2-digit",
       minute: "2-digit"
     });
-    setRecentLogs((prev)=> [
-      {msg, time:t}, 
+    setRecentLogs((prev) => [
+      { msg, time: t },
       ...prev]);
   };
 
@@ -82,29 +92,29 @@ export default function DashboardPage({
 
   //
   const handleDemoTimeUpdate = () => {
-  const v = videoRef.current;
-  if (!v) return;
+    const v = videoRef.current;
+    if (!v) return;
 
-  if (v.currentTime >= DEMO_END_SEC) {
-    v.pause();
-    v.currentTime = DEMO_START_SEC;
-    pushLog("Demo 영상 종료");
-  }
-};
+    if (v.currentTime >= DEMO_END_SEC) {
+      v.pause();
+      v.currentTime = DEMO_START_SEC;
+      pushLog("Demo 영상 종료");
+    }
+  };
   //
 
   // ------------------------------
   // /api/demo/start
   // ------------------------------
-  const API_BASE = `http://${window.location.hostname}:5000`;
 
   const startDemo = async () => {
     try {
       pushLog("Demo START 요청");
+      setIsDemoStarted(true);
 
       // demo 영상 
       const v = videoRef.current;
-      if(v) {
+      if (v) {
         v.pause();
         v.currentTime = DEMO_START_SEC;
         await v.play();
@@ -115,7 +125,7 @@ export default function DashboardPage({
       const r = await fetch(`${API_BASE}/api/demo/start`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}), 
+        body: JSON.stringify({}),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data.ok) throw new Error(data.error || "start failed");
@@ -124,13 +134,13 @@ export default function DashboardPage({
       pushLog(`Demo START 실패: ${String(e.message || e)}`);
     }
   };
-  
+
   // ------------------------------
   // 전광판 차단기 ui용 함수
   // ------------------------------
   const sendVms = () => {
     const text = vmsText.trim();
-    if(!text) return;
+    if (!text) return;
     pushLog(`전광판 송신: ${text}`);
     setVmsText("");
   };
@@ -158,44 +168,44 @@ export default function DashboardPage({
     ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data);
-    
+
 
         //Logs/state는 원하면 반영
-        if(msg.type === "log" && msg.payload?.msg) {
+        if (msg.type === "log" && msg.payload?.msg) {
           setRecentLogs((prev) => [{ msg: msg.payload.msg, time: msg.payload.time || "" }, ...prev].slice(0, 10));
         }
         if (msg.type === "logs" && Array.isArray(msg.payload)) {
-        setRecentLogs(msg.payload.slice(0, 10));
-      }
-
-      // 팝업은 wrong-way만, 토글 on일 때만
-      if(msg.type === "alert") {
-        const alert = msg.payload;
-
-        //토글 off면 팝업 금지, 로그만
-        if (!alertsEnabledRef.current) {
-          if (alert?.subMessage) {
-            setRecentLogs((prev) => [{ msg: `(Muted) ${alert.subMessage}`, time:alert.timestamp || "" }, ...prev].slice(0, 10));
-          }
-          return;
+          setRecentLogs(msg.payload.slice(0, 10));
         }
 
-       if (alert?.type === "wrong-way") {
-          setActiveAlert(alert); // 여기서 팝업 뜸
-        } else {
-          // 다른 타입은 로그만
-          if (alert?.subMessage) {
-            setRecentLogs((prev) => [{ msg: alert.subMessage, time: alert.timestamp || "" }, ...prev].slice(0, 10));
+          // 팝업은 wrong-way만, 토글 on일 때만
+          if (msg.type === "alert") {
+            const alert = msg.payload;
+
+            // 토글 off 거나 데모 시작 전이면 팝업 금지, 로그만
+            if (!alertsEnabledRef.current || !isDemoStartedRef.current) {
+              if (alert?.subMessage) {
+                setRecentLogs((prev) => [{ msg: `(Muted) ${alert.subMessage}`, time: alert.timestamp || "" }, ...prev].slice(0, 10));
+              }
+              return;
+            }
+
+            if (alert?.type === "wrong-way") {
+              setActiveAlert(alert); // 여기서 팝업 뜸
+            } else {
+            // 다른 타입은 로그만
+            if (alert?.subMessage) {
+              setRecentLogs((prev) => [{ msg: alert.subMessage, time: alert.timestamp || "" }, ...prev].slice(0, 10));
+            }
           }
         }
+      } catch {
+        // ignore
       }
-    } catch {
-      // ignore
-    }
-  };
+    };
 
-  return () => ws.close();
-}, []);
+    return () => ws.close();
+  }, []);
 
   // ------------------------------
   // stage별 스타일 함수 
@@ -204,33 +214,33 @@ export default function DashboardPage({
 
   const alertTheme = isCritical
     ? {
-        frame: "border-red-600",
-        header: "bg-red-600",
-        headerText: "text-white",
-        subText: "text-red-100",
-        badge: "bg-red-50 text-red-600 border-red-100",
-        primaryBtn: "bg-red-600 hover:bg-red-700 text-white hover:shadow-red-500/30",
-        secondaryBtn: "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200",
-        stripe:
-          "bg-[linear-gradient(45deg,rgba(220,38,38,0.25)_25%,transparent_25%,transparent_50%,rgba(220,38,38,0.25)_50%,rgba(220,38,38,0.25)_75%,transparent_75%,transparent)]",
-        title: "역주행 위험",
-        priority: "우선순위: 최상",
-        iconBox: "bg-white/20 border-white/30",
-      }
+      frame: "border-red-600",
+      header: "bg-red-600",
+      headerText: "text-white",
+      subText: "text-red-100",
+      badge: "bg-red-50 text-red-600 border-red-100",
+      primaryBtn: "bg-red-600 hover:bg-red-700 text-white hover:shadow-red-500/30",
+      secondaryBtn: "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200",
+      stripe:
+        "bg-[linear-gradient(45deg,rgba(220,38,38,0.25)_25%,transparent_25%,transparent_50%,rgba(220,38,38,0.25)_50%,rgba(220,38,38,0.25)_75%,transparent_75%,transparent)]",
+      title: "역주행 위험",
+      priority: "우선순위: 최상",
+      iconBox: "bg-white/20 border-white/30",
+    }
     : {
-        frame: "border-yellow-500",
-        header: "bg-yellow-400",
-        headerText: "text-gray-900",
-        subText: "text-yellow-900",
-        badge: "bg-yellow-50 text-yellow-700 border-yellow-200",
-        primaryBtn: "bg-yellow-400 hover:bg-yellow-500 text-gray-900 hover:shadow-yellow-400/30",
-        secondaryBtn: "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200",
-        stripe:
-          "bg-[linear-gradient(45deg,rgba(234,179,8,0.22)_25%,transparent_25%,transparent_50%,rgba(234,179,8,0.22)_50%,rgba(234,179,8,0.22)_75%,transparent_75%,transparent)]",
-        title: "역주행 감지",
-        priority: "우선순위: 보통",
-        iconBox: "bg-white/30 border-white/40",
-      };
+      frame: "border-yellow-500",
+      header: "bg-yellow-400",
+      headerText: "text-gray-900",
+      subText: "text-yellow-900",
+      badge: "bg-yellow-50 text-yellow-700 border-yellow-200",
+      primaryBtn: "bg-yellow-400 hover:bg-yellow-500 text-gray-900 hover:shadow-yellow-400/30",
+      secondaryBtn: "bg-gray-100 hover:bg-gray-200 text-gray-700 border-gray-200",
+      stripe:
+        "bg-[linear-gradient(45deg,rgba(234,179,8,0.22)_25%,transparent_25%,transparent_50%,rgba(234,179,8,0.22)_50%,rgba(234,179,8,0.22)_75%,transparent_75%,transparent)]",
+      title: "역주행 감지",
+      priority: "우선순위: 보통",
+      iconBox: "bg-white/30 border-white/40",
+    };
 
 
   // ------------------------------
@@ -239,95 +249,132 @@ export default function DashboardPage({
   useEffect(() => {
     let timer;
 
-    const ping = async ()=>{
+    const ping = async () => {
       try {
-        const API_BASE = `http://${window.location.hostname}:5000`
-        const res = await fetch(`${API_BASE}/api/health`, { cache: "no-store"}); 
+        const res = await fetch(`${API_BASE}/api/health`, { cache: "no-store" });
         setServerAlive(res.ok);
-      }catch {
+      } catch {
         setServerAlive(false);
       }
     };
 
     ping();
-    timer=setInterval(ping, 3000); //3초마다
+    timer = setInterval(ping, 3000); //3초마다
     return () => clearInterval(timer);
   }, []);
+
+  // ------------------------------
+  // CCTV 데이터 가져오기 및 HLS 연결
+  // ------------------------------
+  useEffect(() => {
+    const fetchCctv = async () => {
+      try {
+        const r = await fetch(`${API_BASE}/api/cctv`);
+        const result = await r.json();
+        if (result.ok && result.data?.response?.data?.length > 0) {
+          // 가장 첫 번째 CCTV 정보를 가져옴
+          const cctv = result.data.response.data[0];
+          setCctvData(cctv);
+        }
+      } catch (e) {
+        console.error("CCTV fetch error", e);
+      }
+    };
+    fetchCctv();
+  }, [API_BASE]);
+
+  useEffect(() => {
+    if (cctvData?.cctvurl && cctvVideoRef.current) {
+      const video = cctvVideoRef.current;
+      const hlsUrl = cctvData.cctvurl;
+
+      if (window.Hls && window.Hls.isSupported()) {
+        const hls = new window.Hls();
+        hls.loadSource(hlsUrl);
+        hls.attachMedia(video);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          video.play().catch(e => console.log("Auto-play blocked:", e));
+        });
+      } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+        video.src = hlsUrl;
+      }
+    }
+  }, [cctvData]);
 
 
   return (
     <div className="p-6 space-y-6 bg-white min-h-screen relative">
       {/* 실시간 알림 오버레이 */}
       {activeAlert && (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-in fade-in duration-200">
-        <div className={`bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300 relative border-2 ${alertTheme.frame}`}>
-          {/* 헤더 */}
-          <div className={`${alertTheme.header} p-6 flex items-center justify-between relative overflow-hidden`}>
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/10 to-black/10 opacity-100" />
-            <div className="absolute top-0 right-0 p-4 opacity-10">
-              <Siren className={`w-32 h-32 ${alertTheme.headerText} transform rotate-12`} />
-            </div>
-
-            <div className="relative z-10 flex items-center space-x-4">
-              <div className={`p-3 backdrop-blur-md rounded-full shadow-inner ${alertTheme.iconBox}`}>
-                <Siren className={`w-8 h-8 ${alertTheme.headerText}`} />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-in fade-in duration-200">
+          <div className={`bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-300 relative border-2 ${alertTheme.frame}`}>
+            {/* 헤더 */}
+            <div className={`${alertTheme.header} p-6 flex items-center justify-between relative overflow-hidden`}>
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-white/10 to-black/10 opacity-100" />
+              <div className="absolute top-0 right-0 p-4 opacity-10">
+                <Siren className={`w-32 h-32 ${alertTheme.headerText} transform rotate-12`} />
               </div>
-              <div>
-                <h2 className={`text-2xl font-black tracking-wider italic ${alertTheme.headerText}`}>
-                  {alertTheme.title}
-                </h2>
-                <p className={`font-mono text-sm ${alertTheme.subText}`}>
-                  {alertTheme.priority}
-                </p>
+
+              <div className="relative z-10 flex items-center space-x-4">
+                <div className={`p-3 backdrop-blur-md rounded-full shadow-inner ${alertTheme.iconBox}`}>
+                  <Siren className={`w-8 h-8 ${alertTheme.headerText}`} />
+                </div>
+                <div>
+                  <h2 className={`text-2xl font-black tracking-wider italic ${alertTheme.headerText}`}>
+                    {alertTheme.title}
+                  </h2>
+                  <p className={`font-mono text-sm ${alertTheme.subText}`}>
+                    {alertTheme.priority}
+                  </p>
+                </div>
               </div>
-            </div>
 
-            <button
-              onClick={handleDismissAlert}
-              className={`relative z-10 transition-colors ${isCritical ? "text-white/70 hover:text-white" : "text-gray-700/70 hover:text-gray-900"}`}
-              aria-label="닫기"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-
-          {/* 본문 */}
-          <div className="p-8 text-center space-y-4">
-            <div className={`inline-block px-4 py-1 rounded-full font-bold text-xs tracking-widest border mb-2 ${alertTheme.badge}`}>
-              {activeAlert.timestamp} • 실시간 이벤트
-            </div>
-
-            <div>
-              <h3 className="text-3xl font-black text-gray-900 mb-2 tracking-tight leading-none">
-                {isCritical ? "역주행 위험 단계" : "역주행 경고 단계"}
-              </h3>
-              <p className="text-lg text-gray-600 font-medium">{activeAlert.subMessage}</p>
-            </div>
-
-            <div className="w-full h-px bg-gray-100 my-4" />
-
-            <div className="flex flex-col sm:flex-row gap-4">
-              <button
-                onClick={handleViewAlert}
-                className={`flex-1 py-4 font-black tracking-wider rounded-lg shadow-lg transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 ${alertTheme.primaryBtn}`}
-              >
-                <AlertTriangle className="w-5 h-5" />
-                <span>즉시 조치 화면 보기</span>
-              </button>
               <button
                 onClick={handleDismissAlert}
-                className={`flex-1 py-4 font-bold tracking-wider rounded-lg border transition-colors ${alertTheme.secondaryBtn}`}
+                className={`relative z-10 transition-colors ${isCritical ? "text-white/70 hover:text-white" : "text-gray-700/70 hover:text-gray-900"}`}
+                aria-label="닫기"
               >
-                닫기
+                <X className="w-6 h-6" />
               </button>
             </div>
-          </div>
 
-          {/* 하단 스트라이프 */}
-          <div className={`h-2 w-full bg-[length:20px_20px] ${alertTheme.stripe}`} />
+            {/* 본문 */}
+            <div className="p-8 text-center space-y-4">
+              <div className={`inline-block px-4 py-1 rounded-full font-bold text-xs tracking-widest border mb-2 ${alertTheme.badge}`}>
+                {activeAlert.timestamp} • 실시간 이벤트
+              </div>
+
+              <div>
+                <h3 className="text-3xl font-black text-gray-900 mb-2 tracking-tight leading-none">
+                  {isCritical ? "역주행 위험 단계" : "역주행 경고 단계"}
+                </h3>
+                <p className="text-lg text-gray-600 font-medium">{activeAlert.subMessage}</p>
+              </div>
+
+              <div className="w-full h-px bg-gray-100 my-4" />
+
+              <div className="flex flex-col sm:flex-row gap-4">
+                <button
+                  onClick={handleViewAlert}
+                  className={`flex-1 py-4 font-black tracking-wider rounded-lg shadow-lg transition-all transform hover:-translate-y-0.5 flex items-center justify-center space-x-2 ${alertTheme.primaryBtn}`}
+                >
+                  <AlertTriangle className="w-5 h-5" />
+                  <span>즉시 조치 화면 보기</span>
+                </button>
+                <button
+                  onClick={handleDismissAlert}
+                  className={`flex-1 py-4 font-bold tracking-wider rounded-lg border transition-colors ${alertTheme.secondaryBtn}`}
+                >
+                  닫기
+                </button>
+              </div>
+            </div>
+
+            {/* 하단 스트라이프 */}
+            <div className={`h-2 w-full bg-[length:20px_20px] ${alertTheme.stripe}`} />
+          </div>
         </div>
-      </div>
-    )}
+      )}
 
       {/* 상단 헤더 */}
       <div className="flex justify-between items-center mb-8">
@@ -346,19 +393,18 @@ export default function DashboardPage({
           </div>
         </div>
 
-      <div className="flex items-center gap-3">
-        {/* ✅ 서버 상태 점 */}
-        <div className="flex items-center gap-2 bg-gray-100 border border-gray-300 rounded px-3 h-10">
-          <span
-            className={`w-2.5 h-2.5 rounded-full ${
-              serverAlive ? "bg-green-500" : "bg-red-500"
-            }`}
-            title={serverAlive ? "SERVER OK" : "SERVER DOWN"}
-          />
-          <span className="font-mono text-xs text-gray-600">
-            {serverAlive ? "SERVER" : "OFFLINE"}
-          </span>
-        </div>
+        <div className="flex items-center gap-3">
+          {/* ✅ 서버 상태 점 */}
+          <div className="flex items-center gap-2 bg-gray-100 border border-gray-300 rounded px-3 h-10">
+            <span
+              className={`w-2.5 h-2.5 rounded-full ${serverAlive ? "bg-green-500" : "bg-red-500"
+                }`}
+              title={serverAlive ? "SERVER OK" : "SERVER DOWN"}
+            />
+            <span className="font-mono text-xs text-gray-600">
+              {serverAlive ? "SERVER" : "OFFLINE"}
+            </span>
+          </div>
           <button
             onClick={startDemo}
             className="h-10 px-4 rounded bg-gray-900 text-white text-xs font-bold hover:bg-gray-700"
@@ -368,7 +414,7 @@ export default function DashboardPage({
         </div>
 
 
-            </div>
+      </div>
 
       {/* 시스템 알림 배너 + 토글 */}
       <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-center justify-between">
@@ -389,14 +435,12 @@ export default function DashboardPage({
         >
           <span className="text-xs font-bold text-gray-600">알림</span>
           <div
-            className={`w-10 h-5 rounded-full relative transition-colors ${
-              alertsEnabled ? "bg-red-500" : "bg-gray-300"
-            }`}
+            className={`w-10 h-5 rounded-full relative transition-colors ${alertsEnabled ? "bg-red-500" : "bg-gray-300"
+              }`}
           >
             <div
-              className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${
-                alertsEnabled ? "right-0.5" : "left-0.5"
-              }`}
+              className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-all ${alertsEnabled ? "right-0.5" : "left-0.5"
+                }`}
             />
           </div>
         </button>
@@ -406,7 +450,7 @@ export default function DashboardPage({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="flex flex-col justify-between h-32 cursor-pointer hover:bg-gray-50 hover:border-blue-400 transition-colors group">
           <div className="flex justify-between items-start" onClick={() => goEvents("analytics")}
-        >
+          >
             <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center">
               <Calendar className="w-4 h-4 text-blue-500" />
             </div>
@@ -493,15 +537,24 @@ export default function DashboardPage({
                 실시간 카메라
               </div>
 
-              <div className="flex flex-col items-center text-gray-500 space-y-2">
-                <div className="w-14 h-10 border-2 border-gray-400 rounded-lg flex items-center justify-center">
-                  <div className="w-5 h-5 rounded-full border-2 border-gray-400 relative">
-                    <div className="absolute top-[-2px] right-[-2px] w-2 h-2 bg-gray-400 rounded-full" />
-                  </div>
+              {isDemoStarted ? (
+                <img
+                  src={`http://${window.location.hostname}:5001/cctv_feed`}
+                  alt="CCTV Feed"
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    setTimeout(() => {
+                      const baseUrl = e.target.src.split('?')[0];
+                      e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
+                    }, 3000);
+                  }}
+                />
+              ) : (
+                <div className="text-gray-500 font-mono text-xs flex flex-col items-center">
+                  <Activity className="w-6 h-6 mb-2 opacity-50" />
+                  <span>대기 중...</span>
                 </div>
-
-                <span className="text-xs font-mono">NO SIGNAL</span>
-              </div>
+              )}
 
               <div className="absolute bottom-2 left-2 text-[10px] text-gray-600 font-mono">
                 CAM_01_ENTRANCE
@@ -509,28 +562,51 @@ export default function DashboardPage({
             </div>
 
 
-             {/* 라이다 영역 (2칸) */}
-              <div className="col-span-2 bg-black rounded border border-gray-700 relative overflow-hidden flex">
+            {/* 라이다 영역 (2칸) */}
+            <div className="col-span-2 bg-black rounded border border-gray-700 relative overflow-hidden flex items-center justify-center">
 
-                <div className="absolute top-3 left-3 px-2 py-0.5 bg-blue-900/80 border border-blue-500/50 text-blue-200 text-[10px] font-bold rounded font-mono z-10">
-                  라이다 센서
-                </div>
-
-                <video
-                  ref={videoRef}
-                  src="/demo.mp4"
-                  className="w-full h-full object-cover -rotate-12 scale-[1.42] -translate-y-3"
-                  muted
-                  playsInline
-                  preload="auto"
-                  onTimeUpdate={handleDemoTimeUpdate}
-                />
-
-                <div className="absolute bottom-2 right-2 text-[10px] font-mono text-green-500">
-                  포인트: 2,405 | 주기: 10Hz
-                </div>
-
+              <div className="absolute top-3 left-3 px-2 py-0.5 bg-blue-900/80 border border-blue-500/50 text-blue-200 text-[10px] font-bold rounded font-mono z-10">
+                라이다 센서
               </div>
+
+              {isDemoStarted && (
+                <img
+                  src={`http://${window.location.hostname}:5001/lidar_feed`}
+                  alt="LiDAR Feed"
+                  className="w-full h-full object-contain"
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    if (videoRef.current) videoRef.current.style.display = 'block';
+                    setTimeout(() => {
+                      const baseUrl = e.target.src.split('?')[0];
+                      e.target.src = `${baseUrl}?retry=${new Date().getTime()}`;
+                    }, 3000);
+                  }}
+                  onLoad={(e) => {
+                    e.target.style.display = 'block';
+                    if (videoRef.current) videoRef.current.style.display = 'none';
+                  }}
+                />
+              )}
+
+              <video
+                ref={videoRef}
+                src="/demo.mp4"
+                className="w-full h-full object-cover -rotate-12 scale-[1.42] -translate-y-3"
+                style={{ display: 'none' }}
+                muted
+                playsInline
+                preload="auto"
+                onTimeUpdate={handleDemoTimeUpdate}
+              />
+
+              {!isDemoStarted && (
+                <div className="text-gray-500 font-mono text-xs flex flex-col items-center absolute inset-0 justify-center">
+                  <Activity className="w-6 h-6 mb-2 opacity-50" />
+                  <span>대기 중...</span>
+                </div>
+              )}
+            </div>
 
           </div>
         </Card>
@@ -612,7 +688,7 @@ export default function DashboardPage({
               <div className="text-xs font-bold text-gray-400 mb-2 tracking-wider">최근 이벤트</div>
               <div className="space-y-2 bg-gray-50 p-2 rounded border border-gray-100 max-h-[117px] ">
 
-                {recentLogs.slice(0,4).map((item, i) => (
+                {recentLogs.slice(0, 4).map((item, i) => (
                   <div
                     key={i}
                     className="flex items-center justify-between text-xs pb-1 border-b border-gray-200 border-dashed last:border-0 last:pb-0"
